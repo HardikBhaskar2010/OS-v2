@@ -5,9 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import FloatingHearts from "@/components/FloatingHearts";
-import { useAuth } from "@/contexts/AuthContext";
+import { useSpace } from "@/contexts/SpaceContext";
 import { supabase } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -18,11 +18,11 @@ interface Memory {
   caption: string | null;
   uploaded_by: string;
   created_at: string;
-  uploader_name?: string;
 }
 
 const Gallery = () => {
-  const { user } = useAuth();
+  const navigate = useNavigate();
+  const { currentSpace, displayName } = useSpace();
   const { toast } = useToast();
   const [memories, setMemories] = useState<Memory[]>([]);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
@@ -35,19 +35,18 @@ const Gallery = () => {
   });
 
   useEffect(() => {
-    if (user) {
-      loadPhotos();
-      subscribeToPhotos();
+    if (!currentSpace) {
+      navigate('/');
+      return;
     }
-  }, [user]);
+    loadPhotos();
+    subscribeToPhotos();
+  }, [currentSpace]);
 
   const loadPhotos = async () => {
     const { data, error } = await supabase
       .from('photos')
-      .select(`
-        *,
-        uploader:users!photos_uploaded_by_fkey(display_name)
-      `)
+      .select('*')
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -55,12 +54,7 @@ const Gallery = () => {
       return;
     }
 
-    const formattedPhotos = (data || []).map((photo: any) => ({
-      ...photo,
-      uploader_name: photo.uploader?.display_name
-    }));
-
-    setMemories(formattedPhotos);
+    setMemories(data || []);
   };
 
   const subscribeToPhotos = () => {
@@ -98,14 +92,14 @@ const Gallery = () => {
   };
 
   const handleUpload = async () => {
-    if (!uploadData.file || !user) return;
+    if (!uploadData.file || !currentSpace) return;
 
     setIsUploading(true);
 
     try {
       // Upload photo to Supabase Storage
       const fileExt = uploadData.file.name.split('.').pop();
-      const fileName = `${user.id}-${Date.now()}.${fileExt}`;
+      const fileName = `${displayName}-${Date.now()}.${fileExt}`;
       
       const { error: uploadError } = await supabase.storage
         .from('mood-photos')
@@ -122,7 +116,7 @@ const Gallery = () => {
       const { error: dbError } = await supabase.from('photos').insert({
         image_url: publicUrl,
         caption: uploadData.caption || null,
-        uploaded_by: user.id,
+        uploaded_by: displayName,
       });
 
       if (dbError) throw dbError;
@@ -149,16 +143,22 @@ const Gallery = () => {
   const nextPhoto = () => selectedIndex !== null && setSelectedIndex((selectedIndex + 1) % memories.length);
   const prevPhoto = () => selectedIndex !== null && setSelectedIndex((selectedIndex - 1 + memories.length) % memories.length);
 
+  const goBack = () => {
+    navigate(currentSpace === 'cookie' ? '/cookie' : '/senorita');
+  };
+
   return (
     <div className="min-h-screen bg-background relative overflow-x-hidden p-4 md:p-8">
       <FloatingHearts />
       <div className="max-w-6xl mx-auto relative z-10">
-        <Link to="/">
-          <Button variant="ghost" className="mb-6 gap-2 text-muted-foreground hover:text-primary">
-            <ArrowLeft className="w-4 h-4" />
-            Back to Home
-          </Button>
-        </Link>
+        <Button 
+          onClick={goBack}
+          variant="ghost" 
+          className="mb-6 gap-2 text-muted-foreground hover:text-primary"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to Home
+        </Button>
 
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
           <Card className="bg-card/90 backdrop-blur-md border-primary/20 shadow-xl overflow-hidden">
@@ -306,7 +306,7 @@ const Gallery = () => {
                   <Heart className="w-6 h-6 text-primary fill-current" />
                 </h2>
                 <p className="text-white/60 mt-2 text-lg">
-                  By {memories[selectedIndex].uploader_name} • {format(new Date(memories[selectedIndex].created_at), 'MMMM d, yyyy')}
+                  By {memories[selectedIndex].uploaded_by} • {format(new Date(memories[selectedIndex].created_at), 'MMMM d, yyyy')}
                 </p>
               </div>
             </motion.div>

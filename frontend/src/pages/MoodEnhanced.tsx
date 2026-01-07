@@ -1,14 +1,17 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Smile, Heart, ArrowLeft, Sparkles, Check, Camera, Upload, X, Clock, MessageCircle } from "lucide-react";
+import { Smile, Heart, ArrowLeft, Sparkles, Check, Camera, Upload, X, Clock } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import FloatingHearts from "@/components/FloatingHearts";
-import { useAuth } from "@/contexts/AuthContext";
+import EmptyState from "@/components/EmptyState";
+import LoadingSpinner from "@/components/LoadingSpinner";
+import SkeletonCard from "@/components/SkeletonCard";
+import { useSpace } from "@/contexts/SpaceContext";
 import { supabase } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -28,28 +31,18 @@ const reactionEmojis = ["❤️", "🥰", "🤗", "💋", "🔥", "😍"];
 
 interface Mood {
   id: string;
-  user_id: string;
+  user_name: string;
   mood_emoji: string;
   mood_label: string;
   mood_color: string;
   note: string | null;
   photo_url: string | null;
   created_at: string;
-  username?: string;
-  display_name?: string;
-  reactions?: MoodReaction[];
-}
-
-interface MoodReaction {
-  id: string;
-  mood_id: string;
-  user_id: string;
-  reaction_emoji: string;
-  created_at: string;
 }
 
 const MoodEnhanced = () => {
-  const { user } = useAuth();
+  const navigate = useNavigate();
+  const { currentSpace, displayName, partnerName } = useSpace();
   const { toast } = useToast();
   const [selectedMood, setSelectedMood] = useState<number | null>(null);
   const [selectedColor, setSelectedColor] = useState<string>("#ec4899");
@@ -60,89 +53,67 @@ const MoodEnhanced = () => {
   const [moods, setMoods] = useState<Mood[]>([]);
   const [partnerLatestMood, setPartnerLatestMood] = useState<Mood | null>(null);
   const [myLatestMood, setMyLatestMood] = useState<Mood | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (user) {
-      loadMoods();
-      loadLatestMoods();
-      subscribeToMoodUpdates();
-    }
-  }, [user]);
-
-  const loadMoods = async () => {
-    if (!user) return;
-
-    const { data, error } = await supabase
-      .from('moods')
-      .select(`
-        *,
-        users!inner(username, display_name)
-      `)
-      .order('created_at', { ascending: false })
-      .limit(20);
-
-    if (error) {
-      console.error('Error loading moods:', error);
+    if (!currentSpace) {
+      navigate('/');
       return;
     }
+    const init = async () => {
+      await loadMoods();
+      await loadLatestMoods();
+      setIsLoading(false);
+    };
+    init();
+    subscribeToMoodUpdates();
+  }, [currentSpace]);
 
-    // Load reactions for each mood
-    const moodsWithReactions = await Promise.all(
-      (data || []).map(async (mood: any) => {
-        const { data: reactions } = await supabase
-          .from('mood_reactions')
-          .select('*')
-          .eq('mood_id', mood.id);
+  const loadMoods = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('moods')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(20);
 
-        return {
-          ...mood,
-          username: mood.users?.username,
-          display_name: mood.users?.display_name,
-          reactions: reactions || []
-        };
-      })
-    );
-
-    setMoods(moodsWithReactions);
+      if (error) throw error;
+      setMoods(data || []);
+    } catch (error: any) {
+      console.error('Error loading moods:', error);
+      toast({
+        title: "Error loading moods",
+        description: "Please check your connection",
+        variant: "destructive",
+      });
+    }
   };
 
   const loadLatestMoods = async () => {
-    if (!user) return;
-
     // Get my latest mood
     const { data: myMood } = await supabase
       .from('moods')
-      .select('*, users!inner(username, display_name)')
-      .eq('user_id', user.id)
+      .select('*')
+      .eq('user_name', displayName)
       .order('created_at', { ascending: false })
       .limit(1)
       .single();
 
     if (myMood) {
-      setMyLatestMood({
-        ...myMood,
-        username: myMood.users?.username,
-        display_name: myMood.users?.display_name
-      });
+      setMyLatestMood(myMood);
     }
 
     // Get partner's latest mood
-    if (user.partner_id) {
-      const { data: partnerMood } = await supabase
-        .from('moods')
-        .select('*, users!inner(username, display_name)')
-        .eq('user_id', user.partner_id)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single();
+    const { data: partnerMood } = await supabase
+      .from('moods')
+      .select('*')
+      .eq('user_name', partnerName)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
 
-      if (partnerMood) {
-        setPartnerLatestMood({
-          ...partnerMood,
-          username: partnerMood.users?.username,
-          display_name: partnerMood.users?.display_name
-        });
-      }
+    if (partnerMood) {
+      setPartnerLatestMood(partnerMood);
     }
   };
 
@@ -162,7 +133,7 @@ const MoodEnhanced = () => {
           loadLatestMoods();
 
           // Show notification for partner's new mood
-          if (payload.eventType === 'INSERT' && payload.new.user_id !== user?.id) {
+          if (payload.eventType === 'INSERT' && payload.new.user_name !== displayName) {
             toast({
               title: "New mood update! 💕",
               description: "Your partner just shared their mood",
@@ -190,7 +161,27 @@ const MoodEnhanced = () => {
   };
 
   const handleSubmitMood = async () => {
-    if (selectedMood === null || !user) return;
+    if (selected Mood === null || !currentSpace) return;
+
+    // Validate note length
+    if (note && note.length > 500) {
+      toast({
+        title: "Note too long",
+        description: "Please keep your note under 500 characters",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validate photo size (5MB max)
+    if (photoFile && photoFile.size > 5 * 1024 * 1024) {
+      toast({
+        title: "Photo too large",
+        description: "Please choose a photo under 5MB",
+        variant: "destructive",
+      });
+      return;
+    }
 
     setIsSubmitting(true);
 
@@ -200,7 +191,7 @@ const MoodEnhanced = () => {
       // Upload photo if selected
       if (photoFile) {
         const fileExt = photoFile.name.split('.').pop();
-        const fileName = `${user.id}-${Date.now()}.${fileExt}`;
+        const fileName = `${displayName}-${Date.now()}.${fileExt}`;
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from('mood-photos')
           .upload(fileName, photoFile);
@@ -216,7 +207,7 @@ const MoodEnhanced = () => {
 
       // Insert mood
       const { error } = await supabase.from('moods').insert({
-        user_id: user.id,
+        user_name: displayName,
         mood_emoji: romanticMoods[selectedMood].emoji,
         mood_label: romanticMoods[selectedMood].label,
         mood_color: selectedColor,
@@ -242,8 +233,8 @@ const MoodEnhanced = () => {
       loadLatestMoods();
     } catch (error: any) {
       toast({
-        title: "Error",
-        description: error.message,
+        title: "Error sharing mood",
+        description: error.message || "Please try again",
         variant: "destructive",
       });
     } finally {
@@ -251,54 +242,22 @@ const MoodEnhanced = () => {
     }
   };
 
-  const handleReaction = async (moodId: string, emoji: string) => {
-    if (!user) return;
-
-    try {
-      // Check if already reacted
-      const { data: existing } = await supabase
-        .from('mood_reactions')
-        .select('id')
-        .eq('mood_id', moodId)
-        .eq('user_id', user.id)
-        .single();
-
-      if (existing) {
-        // Remove reaction
-        await supabase
-          .from('mood_reactions')
-          .delete()
-          .eq('id', existing.id);
-      } else {
-        // Add reaction
-        await supabase.from('mood_reactions').insert({
-          mood_id: moodId,
-          user_id: user.id,
-          reaction_emoji: emoji,
-        });
-      }
-
-      loadMoods();
-
-      toast({
-        title: "Reaction sent! ❤️",
-        description: "Your partner will love it",
-      });
-    } catch (error: any) {
-      console.error('Reaction error:', error);
-    }
+  const goBack = () => {
+    navigate(currentSpace === 'cookie' ? '/cookie' : '/senorita');
   };
 
   return (
     <div className="min-h-screen bg-background relative overflow-x-hidden p-4 md:p-8">
       <FloatingHearts />
       <div className="max-w-6xl mx-auto relative z-10">
-        <Link to="/">
-          <Button variant="ghost" className="mb-6 gap-2 text-muted-foreground hover:text-primary">
-            <ArrowLeft className="w-4 h-4" />
-            Back to Home
-          </Button>
-        </Link>
+        <Button 
+          onClick={goBack}
+          variant="ghost" 
+          className="mb-6 gap-2 text-muted-foreground hover:text-primary"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to Home
+        </Button>
 
         <div className="grid md:grid-cols-2 gap-6">
           {/* Share Mood Card */}
@@ -477,7 +436,7 @@ const MoodEnhanced = () => {
               <CardHeader>
                 <CardTitle className="text-2xl flex items-center gap-2">
                   <Heart className="w-6 h-6 text-primary fill-current" />
-                  Your Partner's Mood
+                  {partnerName}'s Mood
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -510,27 +469,13 @@ const MoodEnhanced = () => {
                             className="w-full h-40 object-cover rounded-lg mb-3"
                           />
                         )}
-                        <div className="flex gap-2 flex-wrap">
-                          {reactionEmojis.map((emoji) => (
-                            <Button
-                              key={emoji}
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleReaction(partnerLatestMood.id, emoji)}
-                              className="hover:scale-110 transition-transform"
-                              data-testid={`reaction-button-${emoji}`}
-                            >
-                              {emoji}
-                            </Button>
-                          ))}
-                        </div>
                       </div>
                     </div>
                   </motion.div>
                 ) : (
                   <div className="text-center py-12 text-muted-foreground">
                     <Heart className="w-12 h-12 mx-auto mb-4 opacity-30" />
-                    <p>Waiting for your partner's first mood...</p>
+                    <p>Waiting for {partnerName}'s first mood...</p>
                   </div>
                 )}
               </CardContent>
@@ -572,7 +517,7 @@ const MoodEnhanced = () => {
                       <div className="flex-1">
                         <div className="flex items-center justify-between mb-1">
                           <h4 className="font-semibold text-lg">
-                            {mood.display_name} - {mood.mood_label}
+                            {mood.user_name} - {mood.mood_label}
                           </h4>
                           <span className="text-xs text-muted-foreground">
                             {format(new Date(mood.created_at), 'PPp')}
@@ -587,18 +532,6 @@ const MoodEnhanced = () => {
                             alt="Mood"
                             className="w-full max-w-xs h-32 object-cover rounded-lg mb-2"
                           />
-                        )}
-                        {mood.reactions && mood.reactions.length > 0 && (
-                          <div className="flex gap-1 mt-2">
-                            {mood.reactions.map((reaction) => (
-                              <span
-                                key={reaction.id}
-                                className="text-lg"
-                              >
-                                {reaction.reaction_emoji}
-                              </span>
-                            ))}
-                          </div>
                         )}
                       </div>
                     </div>

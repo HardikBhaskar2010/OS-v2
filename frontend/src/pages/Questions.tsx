@@ -4,9 +4,9 @@ import { MessageCircleHeart, ArrowLeft, RefreshCw, Send, Sparkles, Heart } from 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import FloatingHearts from "@/components/FloatingHearts";
-import { useAuth } from "@/contexts/AuthContext";
+import { useSpace } from "@/contexts/SpaceContext";
 import { supabase } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -21,14 +21,14 @@ interface Question {
 interface Answer {
   id: string;
   question_id: string;
-  user_id: string;
+  user_name: string;
   answer_text: string;
   created_at: string;
-  username?: string;
 }
 
 const Questions = () => {
-  const { user } = useAuth();
+  const navigate = useNavigate();
+  const { currentSpace, displayName, partnerName } = useSpace();
   const { toast } = useToast();
   const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
   const [answer, setAnswer] = useState("");
@@ -37,10 +37,12 @@ const Questions = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    if (user) {
-      loadTodaysQuestion();
+    if (!currentSpace) {
+      navigate('/');
+      return;
     }
-  }, [user]);
+    loadTodaysQuestion();
+  }, [currentSpace]);
 
   const loadTodaysQuestion = async () => {
     const today = format(new Date(), 'yyyy-MM-dd');
@@ -73,14 +75,9 @@ const Questions = () => {
   };
 
   const loadAnswers = async (questionId: string) => {
-    if (!user) return;
-
     const { data, error } = await supabase
       .from('answers')
-      .select(`
-        *,
-        user:users!answers_user_id_fkey(username, display_name)
-      `)
+      .select('*')
       .eq('question_id', questionId);
 
     if (error) {
@@ -88,8 +85,8 @@ const Questions = () => {
       return;
     }
 
-    const myAns = data?.find((a: any) => a.user_id === user.id);
-    const partnerAns = data?.find((a: any) => a.user_id === user.partner_id);
+    const myAns = data?.find((a: Answer) => a.user_name === displayName);
+    const partnerAns = data?.find((a: Answer) => a.user_name === partnerName);
 
     if (myAns) {
       setMyAnswer(myAns);
@@ -100,17 +97,14 @@ const Questions = () => {
     }
 
     if (partnerAns) {
-      setPartnerAnswer({
-        ...partnerAns,
-        username: partnerAns.user?.display_name
-      });
+      setPartnerAnswer(partnerAns);
     } else {
       setPartnerAnswer(null);
     }
   };
 
   const handleSubmit = async () => {
-    if (!answer.trim() || !user || !currentQuestion) return;
+    if (!answer.trim() || !currentSpace || !currentQuestion) return;
 
     setIsSubmitting(true);
 
@@ -129,7 +123,7 @@ const Questions = () => {
           .from('answers')
           .insert({
             question_id: currentQuestion.id,
-            user_id: user.id,
+            user_name: displayName,
             answer_text: answer,
           });
 
@@ -174,6 +168,10 @@ const Questions = () => {
     }
   };
 
+  const goBack = () => {
+    navigate(currentSpace === 'cookie' ? '/cookie' : '/senorita');
+  };
+
   if (!currentQuestion) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -189,12 +187,14 @@ const Questions = () => {
     <div className="min-h-screen bg-background relative overflow-x-hidden p-4 md:p-8">
       <FloatingHearts />
       <div className="max-w-3xl mx-auto relative z-10">
-        <Link to="/">
-          <Button variant="ghost" className="mb-6 gap-2 text-muted-foreground hover:text-primary">
-            <ArrowLeft className="w-4 h-4" />
-            Back to Home
-          </Button>
-        </Link>
+        <Button 
+          onClick={goBack}
+          variant="ghost" 
+          className="mb-6 gap-2 text-muted-foreground hover:text-primary"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to Home
+        </Button>
 
         <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}>
           <Card className="bg-card/90 backdrop-blur-md border-primary/20 shadow-2xl overflow-hidden">
@@ -268,12 +268,12 @@ const Questions = () => {
                 >
                   <div className="flex items-center gap-2 text-primary">
                     <Heart className="w-5 h-5 fill-current" />
-                    <span className="font-semibold">Your Partner's Answer</span>
+                    <span className="font-semibold">{partnerName}'s Answer</span>
                   </div>
                   <div className="bg-primary/5 p-6 rounded-2xl border border-primary/10">
                     <p className="text-lg italic font-serif leading-relaxed">"{partnerAnswer.answer_text}"</p>
                     <p className="text-sm text-muted-foreground mt-3">
-                      — {partnerAnswer.username} • {format(new Date(partnerAnswer.created_at), 'PPp')}
+                      — {partnerAnswer.user_name} • {format(new Date(partnerAnswer.created_at), 'PPp')}
                     </p>
                   </div>
                 </motion.div>

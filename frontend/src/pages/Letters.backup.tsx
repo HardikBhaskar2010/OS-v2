@@ -6,11 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { format } from "date-fns";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import FloatingHearts from "@/components/FloatingHearts";
-import EmptyState from "@/components/EmptyState";
-import LoadingSpinner from "@/components/LoadingSpinner";
-import SkeletonCard from "@/components/SkeletonCard";
 import { useSpace } from "@/contexts/SpaceContext";
 import { supabase } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
@@ -24,17 +21,15 @@ interface LoveLetter {
   created_at: string;
 }
 
-const LettersEnhanced = () => {
+const Letters = () => {
   const navigate = useNavigate();
   const { currentSpace, displayName, partnerName } = useSpace();
   const { toast } = useToast();
   const [letters, setLetters] = useState<LoveLetter[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [isWriting, setIsWriting] = useState(false);
   const [selectedLetter, setSelectedLetter] = useState<LoveLetter | null>(null);
   const [newLetter, setNewLetter] = useState({ title: "", content: "" });
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [errors, setErrors] = useState({ title: "", content: "" });
 
   useEffect(() => {
     if (!currentSpace) {
@@ -46,25 +41,17 @@ const LettersEnhanced = () => {
   }, [currentSpace]);
 
   const loadLetters = async () => {
-    try {
-      setIsLoading(true);
-      const { data, error } = await supabase
-        .from('letters')
-        .select('*')
-        .order('created_at', { ascending: false });
+    const { data, error } = await supabase
+      .from('letters')
+      .select('*')
+      .order('created_at', { ascending: false });
 
-      if (error) throw error;
-      setLetters(data || []);
-    } catch (error: any) {
+    if (error) {
       console.error('Error loading letters:', error);
-      toast({
-        title: "Error loading letters",
-        description: "Please check your connection and try again",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
+      return;
     }
+
+    setLetters(data || []);
   };
 
   const subscribeToLetters = () => {
@@ -86,7 +73,6 @@ const LettersEnhanced = () => {
             toast({
               title: "New Love Letter! 💌",
               description: `${partnerName} sent you a love letter`,
-              duration: 5000,
             });
           }
         }
@@ -98,42 +84,15 @@ const LettersEnhanced = () => {
     };
   };
 
-  const validateForm = (): boolean => {
-    const newErrors = { title: "", content: "" };
-    let isValid = true;
-
-    if (!newLetter.title.trim()) {
-      newErrors.title = "Title is required";
-      isValid = false;
-    } else if (newLetter.title.length > 100) {
-      newErrors.title = "Title must be less than 100 characters";
-      isValid = false;
-    }
-
-    if (!newLetter.content.trim()) {
-      newErrors.content = "Content is required";
-      isValid = false;
-    } else if (newLetter.content.length < 10) {
-      newErrors.content = "Content must be at least 10 characters";
-      isValid = false;
-    } else if (newLetter.content.length > 5000) {
-      newErrors.content = "Content must be less than 5000 characters";
-      isValid = false;
-    }
-
-    setErrors(newErrors);
-    return isValid;
-  };
-
   const handleSubmit = async () => {
-    if (!validateForm() || !currentSpace) return;
+    if (!newLetter.title || !newLetter.content || !currentSpace) return;
 
     setIsSubmitting(true);
 
     try {
       const { error } = await supabase.from('letters').insert({
-        title: newLetter.title.trim(),
-        content: newLetter.content.trim(),
+        title: newLetter.title,
+        content: newLetter.content,
         from_user: displayName,
         to_user: partnerName,
       });
@@ -143,16 +102,14 @@ const LettersEnhanced = () => {
       toast({
         title: "Letter sent! 💕",
         description: "Your love letter has been delivered",
-        duration: 3000,
       });
 
       setNewLetter({ title: "", content: "" });
-      setErrors({ title: "", content: "" });
       setIsWriting(false);
       loadLetters();
     } catch (error: any) {
       toast({
-        title: "Failed to send letter",
+        title: "Error",
         description: error.message,
         variant: "destructive",
       });
@@ -220,55 +177,24 @@ const LettersEnhanced = () => {
                       <Sparkles className="w-5 h-5" />
                       <span className="font-medium">Write from your heart...</span>
                     </div>
-                    
-                    <div className="space-y-2">
-                      <Input
-                        placeholder="Give your letter a title..."
-                        value={newLetter.title}
-                        onChange={(e) => {
-                          setNewLetter({ ...newLetter, title: e.target.value });
-                          if (errors.title) setErrors({ ...errors, title: "" });
-                        }}
-                        className={`text-lg py-6 border-primary/20 focus:border-primary bg-card/50 ${
-                          errors.title ? 'border-destructive' : ''
-                        }`}
-                        data-testid="letter-title-input"
-                        maxLength={100}
-                      />
-                      {errors.title && (
-                        <p className="text-sm text-destructive">{errors.title}</p>
-                      )}
-                      <p className="text-xs text-muted-foreground text-right">
-                        {newLetter.title.length}/100
-                      </p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Textarea
-                        placeholder="Pour your heart out here..."
-                        value={newLetter.content}
-                        onChange={(e) => {
-                          setNewLetter({ ...newLetter, content: e.target.value });
-                          if (errors.content) setErrors({ ...errors, content: "" });
-                        }}
-                        className={`min-h-[300px] text-lg border-primary/20 focus:border-primary bg-card/50 resize-none leading-relaxed ${
-                          errors.content ? 'border-destructive' : ''
-                        }`}
-                        data-testid="letter-content-input"
-                        maxLength={5000}
-                      />
-                      {errors.content && (
-                        <p className="text-sm text-destructive">{errors.content}</p>
-                      )}
-                      <p className="text-xs text-muted-foreground text-right">
-                        {newLetter.content.length}/5000
-                      </p>
-                    </div>
-
+                    <Input
+                      placeholder="Give your letter a title..."
+                      value={newLetter.title}
+                      onChange={(e) => setNewLetter({ ...newLetter, title: e.target.value })}
+                      className="text-lg py-6 border-primary/20 focus:border-primary bg-card/50"
+                      data-testid="letter-title-input"
+                    />
+                    <Textarea
+                      placeholder="Pour your heart out here..."
+                      value={newLetter.content}
+                      onChange={(e) => setNewLetter({ ...newLetter, content: e.target.value })}
+                      className="min-h-[300px] text-lg border-primary/20 focus:border-primary bg-card/50 resize-none leading-relaxed"
+                      data-testid="letter-content-input"
+                    />
                     <Button 
                       onClick={handleSubmit} 
                       className="w-full py-8 text-lg gap-3 shadow-lg"
-                      disabled={isSubmitting}
+                      disabled={!newLetter.title || !newLetter.content || isSubmitting}
                       data-testid="send-letter-button"
                     >
                       {isSubmitting ? (
@@ -285,50 +211,43 @@ const LettersEnhanced = () => {
                       )}
                     </Button>
                   </motion.div>
-                ) : isLoading ? (
-                  <div className="grid gap-4 md:grid-cols-2">
-                    {[1, 2, 3, 4].map((i) => (
-                      <SkeletonCard key={i} />
-                    ))}
-                  </div>
-                ) : letters.length === 0 ? (
-                  <EmptyState
-                    icon={Mail}
-                    title="No letters yet"
-                    description="Start your love story by writing your first heartfelt letter"
-                    actionLabel="Write First Letter"
-                    onAction={() => setIsWriting(true)}
-                  />
                 ) : (
                   <motion.div key="list" className="grid gap-4 md:grid-cols-2">
-                    {letters.map((letter, index) => (
-                      <motion.div
-                        key={letter.id}
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: index * 0.1 }}
-                        className="group cursor-pointer"
-                        onClick={() => setSelectedLetter(letter)}
-                      >
-                        <Card className="h-full bg-accent/20 border-primary/10 hover:border-primary/40 hover:shadow-lg transition-all duration-300">
-                          <CardContent className="p-5">
-                            <div className="flex justify-between items-start mb-3">
-                              <h3 className="font-bold text-lg group-hover:text-primary transition-colors line-clamp-1">
-                                {letter.title}
-                              </h3>
-                              <Heart className="w-4 h-4 text-primary opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 ml-2" />
-                            </div>
-                            <p className="text-muted-foreground line-clamp-3 mb-4 leading-relaxed">
-                              {letter.content}
-                            </p>
-                            <div className="flex justify-between items-center text-sm pt-4 border-t border-primary/5">
-                              <span className="text-primary font-semibold">— {letter.from_user}</span>
-                              <span className="text-muted-foreground">{format(new Date(letter.created_at), "MMM d, yyyy")}</span>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      </motion.div>
-                    ))}
+                    {letters.length === 0 ? (
+                      <div className="col-span-2 text-center py-12 text-muted-foreground">
+                        <Mail className="w-12 h-12 mx-auto mb-4 opacity-30" />
+                        <p>No letters yet. Write your first love letter!</p>
+                      </div>
+                    ) : (
+                      letters.map((letter, index) => (
+                        <motion.div
+                          key={letter.id}
+                          initial={{ opacity: 0, y: 20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: index * 0.1 }}
+                          className="group cursor-pointer"
+                          onClick={() => setSelectedLetter(letter)}
+                        >
+                          <Card className="h-full bg-accent/20 border-primary/10 hover:border-primary/40 hover:shadow-lg transition-all duration-300">
+                            <CardContent className="p-5">
+                              <div className="flex justify-between items-start mb-3">
+                                <h3 className="font-bold text-lg group-hover:text-primary transition-colors">
+                                  {letter.title}
+                                </h3>
+                                <Heart className="w-4 h-4 text-primary opacity-0 group-hover:opacity-100 transition-opacity" />
+                              </div>
+                              <p className="text-muted-foreground line-clamp-3 mb-4 leading-relaxed">
+                                {letter.content}
+                              </p>
+                              <div className="flex justify-between items-center text-sm pt-4 border-t border-primary/5">
+                                <span className="text-primary font-semibold">— {letter.from_user}</span>
+                                <span className="text-muted-foreground">{format(new Date(letter.created_at), "MMM d, yyyy")}</span>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        </motion.div>
+                      ))
+                    )}
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -337,7 +256,6 @@ const LettersEnhanced = () => {
         </motion.div>
       </div>
 
-      {/* Full Letter View Modal */}
       <AnimatePresence>
         {selectedLetter && (
           <motion.div
@@ -396,4 +314,4 @@ const LettersEnhanced = () => {
   );
 };
 
-export default LettersEnhanced;
+export default Letters;

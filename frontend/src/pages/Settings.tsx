@@ -1,16 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { motion } from "framer-motion";
-import { Settings as SettingsIcon, ArrowLeft, Palette, Sun, Moon, Monitor, Heart, User, Calendar, Sparkles, Save, Check } from "lucide-react";
+import { Settings as SettingsIcon, ArrowLeft, Palette, Sun, Moon, Monitor, Heart, Sparkles, Check } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import FloatingHearts from "@/components/FloatingHearts";
-import { useAuth } from "@/contexts/AuthContext";
+import { useSpace } from "@/contexts/SpaceContext";
 import { useTheme, ColorTheme, AppearanceMode } from "@/contexts/ThemeContext";
-import { supabase } from "@/lib/supabase";
-import { useToast } from "@/hooks/use-toast";
 
 const colorOptions: { value: ColorTheme; label: string; color: string }[] = [
   { value: 'pink', label: 'Pink Romance', color: '#ec4899' },
@@ -28,69 +24,27 @@ const appearanceOptions: { value: AppearanceMode; label: string; icon: React.Ele
 ];
 
 const Settings = () => {
-  const { user, refreshUser } = useAuth();
+  const navigate = useNavigate();
+  const { currentSpace, displayName, partnerName } = useSpace();
   const { colorTheme, setColorTheme, appearanceMode, setAppearanceMode } = useTheme();
-  const { toast } = useToast();
-  const [isSaving, setIsSaving] = useState(false);
-  const [profileData, setProfileData] = useState({
-    display_name: '',
-    anniversary_date: '',
-    relationship_start: '',
-  });
 
-  useEffect(() => {
-    if (user) {
-      setProfileData({
-        display_name: user.display_name || '',
-        anniversary_date: user.anniversary_date || '',
-        relationship_start: user.relationship_start || '',
-      });
-    }
-  }, [user]);
-
-  const handleSaveProfile = async () => {
-    if (!user) return;
-
-    setIsSaving(true);
-    try {
-      const { error } = await supabase
-        .from('users')
-        .update({
-          display_name: profileData.display_name,
-          anniversary_date: profileData.anniversary_date || null,
-          relationship_start: profileData.relationship_start || null,
-        })
-        .eq('id', user.id);
-
-      if (error) throw error;
-
-      await refreshUser();
-      
-      toast({
-        title: "Saved! 💕",
-        description: "Your profile has been updated",
-      });
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setIsSaving(false);
-    }
+  const goBack = () => {
+    navigate(currentSpace === 'cookie' ? '/cookie' : '/senorita');
   };
 
   return (
     <div className="min-h-screen bg-background relative overflow-x-hidden p-4 md:p-8">
       <FloatingHearts />
       <div className="max-w-3xl mx-auto relative z-10">
-        <Link to="/">
-          <Button variant="ghost" className="mb-6 gap-2 text-muted-foreground hover:text-primary" data-testid="back-button">
-            <ArrowLeft className="w-4 h-4" />
-            Back to Home
-          </Button>
-        </Link>
+        <Button 
+          onClick={goBack}
+          variant="ghost" 
+          className="mb-6 gap-2 text-muted-foreground hover:text-primary" 
+          data-testid="back-button"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to Home
+        </Button>
 
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -197,109 +151,45 @@ const Settings = () => {
             </CardContent>
           </Card>
 
-          {/* Profile Settings */}
-          <Card className="bg-card/90 backdrop-blur-md border-primary/20 shadow-xl">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-xl">
-                <User className="w-5 h-5 text-primary" />
-                Profile
-              </CardTitle>
-              <CardDescription>Update your personal information</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="display_name" className="flex items-center gap-2">
-                  <Heart className="w-4 h-4 text-primary" />
-                  Display Name
-                </Label>
-                <Input
-                  id="display_name"
-                  value={profileData.display_name}
-                  onChange={(e) => setProfileData({ ...profileData, display_name: e.target.value })}
-                  placeholder="Your display name"
-                  className="border-primary/20"
-                  data-testid="display-name-input"
-                />
-              </div>
-
-              <div className="grid md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="relationship_start" className="flex items-center gap-2">
-                    <Calendar className="w-4 h-4 text-primary" />
-                    Relationship Start Date
-                  </Label>
-                  <Input
-                    id="relationship_start"
-                    type="date"
-                    value={profileData.relationship_start}
-                    onChange={(e) => setProfileData({ ...profileData, relationship_start: e.target.value })}
-                    className="border-primary/20"
-                    data-testid="relationship-start-input"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="anniversary_date" className="flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-primary" />
-                    Anniversary Date
-                  </Label>
-                  <Input
-                    id="anniversary_date"
-                    type="date"
-                    value={profileData.anniversary_date}
-                    onChange={(e) => setProfileData({ ...profileData, anniversary_date: e.target.value })}
-                    className="border-primary/20"
-                    data-testid="anniversary-date-input"
-                  />
-                </div>
-              </div>
-
-              <Button
-                onClick={handleSaveProfile}
-                disabled={isSaving}
-                className="w-full gap-2"
-                data-testid="save-profile-button"
-              >
-                {isSaving ? (
-                  <>
-                    <Sparkles className="w-4 h-4 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Save className="w-4 h-4" />
-                    Save Changes
-                  </>
-                )}
-              </Button>
-            </CardContent>
-          </Card>
-
-          {/* Account Info */}
+          {/* Space Info */}
           <Card className="bg-card/90 backdrop-blur-md border-primary/20 shadow-xl">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-xl">
                 <Heart className="w-5 h-5 text-primary fill-current" />
-                Account Info
+                Your Space
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="flex justify-between items-center py-2 border-b border-border/50">
-                <span className="text-muted-foreground">Role</span>
-                <span className="font-medium capitalize flex items-center gap-2">
-                  {user?.role === 'boyfriend' ? '🧑 Boyfriend' : '👩 Girlfriend'}
+              <div className="flex justify-between items-center py-3 border-b border-border/50">
+                <span className="text-muted-foreground">Current Space</span>
+                <span className="font-semibold text-lg flex items-center gap-2">
+                  {currentSpace === 'cookie' ? '🍪 Cookie\'s Command Center' : '💃 Senorita\'s Sanctuary'}
                 </span>
               </div>
-              <div className="flex justify-between items-center py-2 border-b border-border/50">
-                <span className="text-muted-foreground">Username</span>
-                <span className="font-medium">@{user?.username}</span>
+              <div className="flex justify-between items-center py-3 border-b border-border/50">
+                <span className="text-muted-foreground">Your Name</span>
+                <span className="font-medium text-primary">{displayName}</span>
               </div>
-              <div className="flex justify-between items-center py-2">
-                <span className="text-muted-foreground">Partner Status</span>
-                <span className="font-medium text-primary">
-                  {user?.partner_id ? '💑 Connected' : '💔 Not linked'}
+              <div className="flex justify-between items-center py-3">
+                <span className="text-muted-foreground">Partner</span>
+                <span className="font-medium text-primary flex items-center gap-2">
+                  {partnerName} <Heart className="w-4 h-4 fill-current animate-pulse" />
                 </span>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Love Message */}
+          <Card className="bg-gradient-to-br from-primary/20 via-primary/10 to-transparent border-primary/30 shadow-xl">
+            <CardContent className="p-8 text-center">
+              <Sparkles className="w-12 h-12 mx-auto mb-4 text-primary" />
+              <h3 className="text-2xl font-bold mb-2">Made With Love</h3>
+              <p className="text-muted-foreground text-lg">
+                This space is dedicated to Cookie 🍪 and Senorita 💃
+              </p>
+              <p className="text-muted-foreground mt-2">
+                Forever & Always 💕
+              </p>
             </CardContent>
           </Card>
         </motion.div>
