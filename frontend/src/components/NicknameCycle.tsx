@@ -1,21 +1,21 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useCouple } from "@/contexts/CoupleContext";
-import { useAuth } from "@/contexts/AuthContext";
+import { useSpace } from "@/contexts/SpaceContext";
 
 // Default nicknames - will be replaced by display names when available
 const defaultNicknames1 = ["My Love", "Sweetheart", "Darling"];
 const defaultNicknames2 = ["My Love", "Sweetheart", "Honey"];
 
 export const NicknameCycle1 = () => {
-  const { user } = useAuth();
+  const { currentSpace, partnerName } = useSpace();
   const { partnerNames } = useCouple();
   const [index, setIndex] = useState(0);
   
   // Create nicknames array with the actual name as first
-  const nicknames = user?.role === 'boyfriend' 
-    ? [partnerNames[0], ...defaultNicknames1]
-    : [partnerNames[1], ...defaultNicknames1];
+  const nicknames = currentSpace === 'cookie' 
+    ? [partnerNames[1], ...defaultNicknames1]
+    : [partnerNames[0], ...defaultNicknames1];
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -43,14 +43,14 @@ export const NicknameCycle1 = () => {
 };
 
 export const NicknameCycle2 = () => {
-  const { user } = useAuth();
+  const { currentSpace } = useSpace();
   const { partnerNames } = useCouple();
   const [index, setIndex] = useState(0);
   
   // Create nicknames array with the actual name as first
-  const nicknames = user?.role === 'boyfriend' 
-    ? [partnerNames[1], ...defaultNicknames2]
-    : [partnerNames[0], ...defaultNicknames2];
+  const nicknames = currentSpace === 'cookie' 
+    ? [partnerNames[0], ...defaultNicknames2]
+    : [partnerNames[1], ...defaultNicknames2];
 
   useEffect(() => {
     const timer = setInterval(() => {

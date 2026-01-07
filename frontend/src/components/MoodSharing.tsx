@@ -3,14 +3,14 @@ import { motion } from "framer-motion";
 import { Smile, Heart, Sparkles, ArrowRight } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { useAuth } from "@/contexts/AuthContext";
+import { useSpace } from "@/contexts/SpaceContext";
 import { supabase } from "@/lib/supabase";
 import { useNavigate } from "react-router-dom";
 import { formatDistanceToNow } from "date-fns";
 
 interface Mood {
   id: string;
-  user_id: string;
+  user_name: string;
   mood_emoji: string;
   mood_label: string;
   mood_color: string;
@@ -19,26 +19,26 @@ interface Mood {
 }
 
 const MoodSharing = () => {
-  const { user } = useAuth();
+  const { currentSpace, displayName, partnerName } = useSpace();
   const navigate = useNavigate();
   const [myMood, setMyMood] = useState<Mood | null>(null);
   const [partnerMood, setPartnerMood] = useState<Mood | null>(null);
 
   useEffect(() => {
-    if (user) {
+    if (currentSpace) {
       loadLatestMoods();
       subscribeToMoodUpdates();
     }
-  }, [user]);
+  }, [currentSpace]);
 
   const loadLatestMoods = async () => {
-    if (!user) return;
+    if (!currentSpace) return;
 
     // Get my latest mood
     const { data: myLatest } = await supabase
       .from('moods')
       .select('*')
-      .eq('user_id', user.id)
+      .eq('user_name', displayName)
       .order('created_at', { ascending: false })
       .limit(1)
       .single();
@@ -48,18 +48,16 @@ const MoodSharing = () => {
     }
 
     // Get partner's latest mood
-    if (user.partner_id) {
-      const { data: partnerLatest } = await supabase
-        .from('moods')
-        .select('*')
-        .eq('user_id', user.partner_id)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single();
+    const { data: partnerLatest } = await supabase
+      .from('moods')
+      .select('*')
+      .eq('user_name', partnerName)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
 
-      if (partnerLatest) {
-        setPartnerMood(partnerLatest);
-      }
+    if (partnerLatest) {
+      setPartnerMood(partnerLatest);
     }
   };
 

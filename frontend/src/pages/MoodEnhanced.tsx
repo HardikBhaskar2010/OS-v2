@@ -161,7 +161,7 @@ const MoodEnhanced = () => {
   };
 
   const handleSubmitMood = async () => {
-    if (selected Mood === null || !currentSpace) return;
+    if (selectedMood === null || !currentSpace) return;
 
     // Validate note length
     if (note && note.length > 500) {
